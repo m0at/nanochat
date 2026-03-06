@@ -1,0 +1,22 @@
+[package]
+name = "dataview"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "dataview"
+path = "src/main.rs"
+
+[dependencies]
+parquet = { version = "55", default-features = false, features = ["arrow", "snap", "zstd"] }
+arrow = { version = "55", default-features = false, features = ["prettyprint"] }
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+comfy-table = "7"
+
+[profile.release]
+opt-level = 3
+lto = true
