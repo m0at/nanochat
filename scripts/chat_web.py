@@ -267,10 +267,10 @@ async def generate_stream(
     assistant_end = worker.tokenizer.encode_special("<|assistant_end|>")
     bos = worker.tokenizer.get_bos_token_id()
 
-    # Accumulate tokens to properly handle multi-byte UTF-8 characters (like emojis)
-    accumulated_tokens = []
-    # Track the last complete UTF-8 string (without replacement characters)
-    last_clean_text = ""
+    # Rolling buffer for UTF-8 boundary detection
+    # We only need to buffer a few recent tokens to catch incomplete multi-byte sequences
+    # (UTF-8 sequences are at most 4 bytes, and tokens are typically 1-4 bytes each)
+    pending_tokens = []
 
     for token_column, token_masks in worker.engine.generate(
         tokens,
@@ -286,19 +286,16 @@ async def generate_stream(
         if token == assistant_end or token == bos:
             break
 
-        # Append the token to sequence
-        accumulated_tokens.append(token)
-        # Decode all accumulated tokens to get proper UTF-8 handling
-        # Note that decode is a quite efficient operation, basically table lookup and string concat
-        current_text = worker.tokenizer.decode(accumulated_tokens)
-        # Only emit text if it doesn't end with a replacement character
-        # This ensures we don't emit incomplete UTF-8 sequences
-        if not current_text.endswith('�'):
-            # Extract only the new text since last clean decode
-            new_text = current_text[len(last_clean_text):]
-            if new_text:  # Only yield if there's new content
-                yield f"data: {json.dumps({'token': new_text, 'gpu': worker.gpu_id}, ensure_ascii=False)}\n\n"
-                last_clean_text = current_text
+        pending_tokens.append(token)
+        # Try to decode the pending tokens
+        text = worker.tokenizer.decode(pending_tokens)
+        # If the decode ends with replacement char, we have an incomplete sequence — keep buffering
+        if text.endswith('�'):
+            continue
+        # Emit the clean text and clear the pending buffer
+        if text:
+            yield f"data: {json.dumps({'token': text, 'gpu': worker.gpu_id}, ensure_ascii=False)}\n\n"
+        pending_tokens.clear()
 
     yield f"data: {json.dumps({'done': True})}\n\n"
 

@@ -27,7 +27,10 @@ def _detect_compute_dtype():
         # fp16 training requires GradScaler (not yet implemented), so fall back to fp32.
         # Users can still force fp16 via NANOCHAT_DTYPE=float16 if they know what they're doing.
         return torch.float32, f"auto-detected: CUDA SM {capability[0]}{capability[1]} (pre-Ampere, bf16 not supported, using fp32)"
-    return torch.float32, "auto-detected: no CUDA (CPU/MPS)"
+    if torch.backends.mps.is_available():
+        # Apple Silicon M-series chips support bf16 natively (M1+)
+        return torch.bfloat16, "auto-detected: MPS (Apple Silicon bf16 supported)"
+    return torch.float32, "auto-detected: CPU"
 COMPUTE_DTYPE, COMPUTE_DTYPE_REASON = _detect_compute_dtype()
 
 class ColoredFormatter(logging.Formatter):
@@ -189,8 +192,8 @@ def compute_init(device_type="cuda"): # cuda|cpu|mps
     # torch.use_deterministic_algorithms(True)
 
     # Precision
-    if device_type == "cuda":
-        torch.set_float32_matmul_precision("high") # uses tf32 instead of fp32 for matmuls, see https://docs.pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html
+    if device_type in ("cuda", "mps"):
+        torch.set_float32_matmul_precision("high") # uses tf32 instead of fp32 for matmuls
 
     # Distributed setup: Distributed Data Parallel (DDP), optional, and requires CUDA
     is_ddp_requested, ddp_rank, ddp_local_rank, ddp_world_size = get_dist_info()

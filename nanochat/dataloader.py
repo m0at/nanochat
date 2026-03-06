@@ -16,6 +16,7 @@ Fallback to the original if you have very limited data AND long documents:
 https://github.com/karpathy/nanochat/blob/3c3a3d7/nanochat/dataloader.py#L78-L117
 """
 
+import bisect
 import torch
 import pyarrow.parquet as pq
 
@@ -98,21 +99,24 @@ def tokenizing_distributed_data_loader_with_state_bos_bestfit(
     row_capacity = T + 1
     batches = _document_batches(split, resume_state_dict, tokenizer_batch_size)
     bos_token = tokenizer.get_bos_token_id()
-    doc_buffer = []
+    doc_buffer = []  # sorted list of (length, unique_id, tensor) for bisect
+    doc_counter = 0  # tiebreaker for bisect (avoids comparing tensors)
     pq_idx, rg_idx, epoch = 0, 0, 1
 
     def refill_buffer():
-        nonlocal pq_idx, rg_idx, epoch
+        nonlocal pq_idx, rg_idx, epoch, doc_counter
         doc_batch, (pq_idx, rg_idx, epoch) = next(batches)
         token_lists = tokenizer.encode(doc_batch, prepend=bos_token, num_threads=tokenizer_threads)
         for tokens in token_lists:
-            doc_buffer.append(tokens)
+            t = torch.tensor(tokens, dtype=torch.long)
+            bisect.insort(doc_buffer, (len(tokens), doc_counter, t))
+            doc_counter += 1
 
     # Pre-allocate buffers once: layout is [inputs (B*T) | targets (B*T)]
     # This gives us contiguous views and a single HtoD transfer
-    use_cuda = device == "cuda"
+    use_async = device in ("cuda", "mps")
     row_buffer = torch.empty((B, row_capacity), dtype=torch.long) # for building rows without creating Python lists
-    cpu_buffer = torch.empty(2 * B * T, dtype=torch.long, pin_memory=use_cuda) # staging area (CPU)
+    cpu_buffer = torch.empty(2 * B * T, dtype=torch.long, pin_memory=use_async) # staging area (CPU)
     gpu_buffer = torch.empty(2 * B * T, dtype=torch.long, device=device) # on-device buffer
     cpu_inputs = cpu_buffer[:B * T].view(B, T) # a few views into these buffers just for convenience
     cpu_targets = cpu_buffer[B * T:].view(B, T)
@@ -129,25 +133,19 @@ def tokenizing_distributed_data_loader_with_state_bos_bestfit(
 
                 remaining = row_capacity - pos
 
-                # Find largest doc that fits entirely
-                best_idx = -1
-                best_len = 0
-                for i, doc in enumerate(doc_buffer):
-                    doc_len = len(doc)
-                    if doc_len <= remaining and doc_len > best_len:
-                        best_idx = i
-                        best_len = doc_len
+                # Binary search for largest doc that fits entirely
+                # doc_buffer is sorted by length, find rightmost with length <= remaining
+                # bisect key: (remaining, float('inf')) is greater than any (remaining, id)
+                idx = bisect.bisect_right(doc_buffer, (remaining, float('inf'))) - 1
 
-                if best_idx >= 0:
-                    doc = doc_buffer.pop(best_idx)
-                    doc_len = len(doc)
-                    row_buffer[row_idx, pos:pos + doc_len] = torch.tensor(doc, dtype=torch.long)
+                if idx >= 0:
+                    doc_len, _, doc_tensor = doc_buffer.pop(idx)
+                    row_buffer[row_idx, pos:pos + doc_len] = doc_tensor
                     pos += doc_len
                 else:
-                    # No doc fits - crop shortest in buffer to fill remaining and minimize waste
-                    shortest_idx = min(range(len(doc_buffer)), key=lambda i: len(doc_buffer[i]))
-                    doc = doc_buffer.pop(shortest_idx)
-                    row_buffer[row_idx, pos:pos + remaining] = torch.tensor(doc[:remaining], dtype=torch.long)
+                    # No doc fits - crop shortest (first element) to fill remaining
+                    _, _, doc_tensor = doc_buffer.pop(0)
+                    row_buffer[row_idx, pos:pos + remaining] = doc_tensor[:remaining]
                     pos += remaining
 
         # Copy to pinned CPU buffer, then single HtoD transfer
@@ -157,7 +155,7 @@ def tokenizing_distributed_data_loader_with_state_bos_bestfit(
         state_dict = {"pq_idx": pq_idx, "rg_idx": rg_idx, "epoch": epoch}
 
         # Single HtoD copy into persistent GPU buffer and yield
-        gpu_buffer.copy_(cpu_buffer, non_blocking=use_cuda)
+        gpu_buffer.copy_(cpu_buffer, non_blocking=use_async)
         yield inputs, targets, state_dict
 
 def tokenizing_distributed_data_loader_bos_bestfit(*args, **kwargs):

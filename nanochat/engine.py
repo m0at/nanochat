@@ -177,7 +177,7 @@ class Engine:
         # As a quick hack, we're making generate() function inherit and know about this repo-wise assumption.
         # I think there has to be a bigger refactor to deal with device/dtype tracking across the codebase.
         # In particular, the KVCache should allocate its tensors lazily
-        dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+        dtype = torch.float32 if device.type == "cpu" else torch.bfloat16
         rng = torch.Generator(device=device)
         rng.manual_seed(seed)
 

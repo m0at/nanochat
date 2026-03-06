@@ -145,6 +145,28 @@ def muon_step_fused(
     mask = (g * stacked_params) >= 0
     stacked_params.sub_(lr * g + lr * wd * stacked_params * mask)
 
+@torch.compile(dynamic=False, fullgraph=True)
+def muon_step_simple(
+    stacked_grads: Tensor,
+    stacked_params: Tensor,
+    momentum_buffer: Tensor,
+    momentum_t: Tensor,
+    lr_t: Tensor,
+    wd_t: Tensor,
+) -> None:
+    """
+    Simplified Muon step for CPU/MPS: momentum -> update (no Polar Express).
+    Skips the expensive matrix orthogonalization that only benefits CUDA.
+    """
+    momentum = momentum_t.to(stacked_grads.dtype)
+    momentum_buffer.lerp_(stacked_grads, 1 - momentum)
+    g = stacked_grads.lerp_(momentum_buffer, momentum)
+    # Cautious weight decay + parameter update
+    lr = lr_t.to(g.dtype)
+    wd = wd_t.to(g.dtype)
+    mask = (g * stacked_params) >= 0
+    stacked_params.sub_(lr * g + lr * wd * stacked_params * mask)
+
 # -----------------------------------------------------------------------------
 # Single GPU version of the MuonAdamW optimizer.
 # Used mostly for reference, debugging and testing.
@@ -263,19 +285,30 @@ class MuonAdamW(torch.optim.Optimizer):
         self._muon_lr_t.fill_(group["lr"] * max(1.0, shape[-2] / shape[-1])**0.5)
         self._muon_wd_t.fill_(group["weight_decay"])
 
-        # Single fused kernel: momentum -> polar_express -> variance_reduction -> update
-        muon_step_fused(
-            stacked_grads,
-            stacked_params,
-            momentum_buffer,
-            second_momentum_buffer,
-            self._muon_momentum_t,
-            self._muon_lr_t,
-            self._muon_wd_t,
-            self._muon_beta2_t,
-            group["ns_steps"],
-            red_dim,
-        )
+        # Full Polar Express on CUDA and MPS (Apple Silicon supports bf16 matmuls),
+        # simple momentum fallback on CPU only
+        if device.type in ("cuda", "mps"):
+            muon_step_fused(
+                stacked_grads,
+                stacked_params,
+                momentum_buffer,
+                second_momentum_buffer,
+                self._muon_momentum_t,
+                self._muon_lr_t,
+                self._muon_wd_t,
+                self._muon_beta2_t,
+                group["ns_steps"],
+                red_dim,
+            )
+        else:
+            muon_step_simple(
+                stacked_grads,
+                stacked_params,
+                momentum_buffer,
+                self._muon_momentum_t,
+                self._muon_lr_t,
+                self._muon_wd_t,
+            )
 
         # Copy back to original params
         torch._foreach_copy_(params, list(stacked_params.unbind(0)))

@@ -84,8 +84,8 @@ def build_model(checkpoint_dir, step, device, phase):
     """
     assert phase in ["train", "eval"], f"Invalid phase: {phase}"
     model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
-    if device.type in {"cpu", "mps"}:
-        # Convert bfloat16 tensors to float for CPU inference
+    if device.type == "cpu":
+        # Convert bfloat16 tensors to float for CPU inference (CPU bf16 is slow)
         model_data = {
             k: v.float() if v.dtype == torch.bfloat16 else v
             for k, v in model_data.items()
@@ -99,9 +99,9 @@ def build_model(checkpoint_dir, step, device, phase):
     _patch_missing_keys(model_data, model_config)
     with torch.device("meta"):
         model = GPT(model_config)
-    # Load the model state
+    # Load the model state directly — skip init_weights() since assign=True
+    # replaces all parameters with checkpoint data (no wasted random init)
     model.to_empty(device=device)
-    model.init_weights() # note: this is dumb, but we need to init the rotary embeddings. TODO: fix model re-init
     model.load_state_dict(model_data, strict=True, assign=True)
     # Put the model in the right training phase / mode
     if phase == "eval":

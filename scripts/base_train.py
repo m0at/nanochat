@@ -87,8 +87,15 @@ user_config = vars(args).copy()  # for logging
 device_type = autodetect_device_type() if args.device_type == "" else args.device_type
 ddp, ddp_rank, ddp_local_rank, ddp_world_size, device = compute_init(device_type)
 master_process = ddp_rank == 0 # this process will do logging, checkpointing etc.
-synchronize = torch.cuda.synchronize if device_type == "cuda" else lambda: None
-get_max_memory = torch.cuda.max_memory_allocated if device_type == "cuda" else lambda: 0
+if device_type == "cuda":
+    synchronize = torch.cuda.synchronize
+    get_max_memory = torch.cuda.max_memory_allocated
+elif device_type == "mps":
+    synchronize = torch.mps.synchronize
+    get_max_memory = torch.mps.current_allocated_memory
+else:
+    synchronize = lambda: None
+    get_max_memory = lambda: 0
 if device_type == "cuda":
     gpu_device_name = torch.cuda.get_device_name(0)
     gpu_peak_flops = get_peak_flops(gpu_device_name)
@@ -406,6 +413,23 @@ grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
 print0(f"Tokens / micro-batch / rank: {args.device_batch_size} x {args.max_seq_len} = {tokens_per_fwdbwd:,}")
 print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
 print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {grad_accum_steps}")
+
+# Compile warmup: trigger torch.compile on the first forward/backward/optimizer pass
+# so that compilation cost doesn't distort steady-state measurements
+if not resuming:
+    print0("Running compile warmup...")
+    synchronize()
+    t_warmup_start = time.time()
+    for _ in range(grad_accum_steps):
+        loss = model(x, y)
+        loss = loss / grad_accum_steps
+        loss.backward()
+    optimizer.step()
+    model.zero_grad(set_to_none=True)
+    synchronize()
+    t_warmup_end = time.time()
+    print0(f"Compile warmup done in {t_warmup_end - t_warmup_start:.2f}s")
+    x, y, dataloader_state_dict = next(train_loader)  # re-fetch since we consumed data
 
 # Go!
 while True:
