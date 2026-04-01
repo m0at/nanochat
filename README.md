@@ -4,7 +4,7 @@
 
 The point is not novelty for its own sake. The point is to make polyglot boundaries explicit, reviewable, and compiler-owned instead of scattering them across wrappers, handwritten FFI, and build glue.
 
-This repository is written in `jizzrug`. The source of truth for the language front end, the manifest model, and the CLI lives in `.jizz` files. A small Node-based bootstrap runtime is included so the `.jizz` source tree can actually be executed today.
+This repository is written in `jizzrug`. The source of truth for the language front end, the manifest model, lane aliases, CLI contract, bootstrap roots, and output policy lives in `.jizz` files. A small Node-based bootstrap runtime is included so the `.jizz` source tree can actually be executed today.
 
 This started as a fork of Karpathy's `nanochat`, and honestly forking that repo was inspiring enough that it short-circuited my brain and made me go write an entirely different programming language. The result is not a patch set. It is a full departure motivated by how energizing it was to start from a codebase that felt small, legible, and alive.
 
@@ -136,6 +136,7 @@ Today it provides:
 
 - the language-facing source files for the front-end architecture
 - a serious CLI contract in jizzrug
+- real runtime configuration loaded from the `.jizz` source files
 - a canonical example program in `.jizz`
 - a Node host runtime that can execute the `.jizz` source tree today
 - a bootstrap plan for getting to a self-hosting compiler

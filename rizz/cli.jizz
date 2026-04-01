@@ -3,10 +3,25 @@
 js: export const COMMAND_NAME = "cum";
 js: export const COMMAND_EXPANSION = "Computer Unified Memory dispatcher";
 js: export const DEFAULT_OUTPUT_DIR = "dist/jizzrug";
+js: export const COMMANDS = {
+js:   cum: { summary: "Run the Computer Unified Memory dispatcher", defaultOutDir: "dist/jizzrug", requiresSource: true },
+js:   bootstrap: { summary: "Compile the repo .jizz source tree", defaultOutDir: "out/bootstrap", requiresSource: false }
+js: };
 
 ```javascript synopsis
 export function usage() {
     return "rizz cum <source.jizz> [--out DIR] [--json]";
+}
+
+export function helpText() {
+    return [
+        "usage: rizz <command> [options]",
+        "",
+        "commands:",
+        "  cum <source> [--out DIR] [--json]     Run the Computer Unified Memory dispatcher",
+        "  bootstrap [--out DIR] [--json]        Compile the repo .jizz source tree",
+        "  help                                  Show this help text",
+    ].join("\n");
 }
 ```
 

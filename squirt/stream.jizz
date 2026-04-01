@@ -1,6 +1,7 @@
 # squirt stream contracts for emitted artifacts.
 
 js: export const STREAM_KIND = "artifact-stream";
+js: export const ARTIFACT_NAMES = ["main.js", "main.go", "main.rs", "main.zig", "plan.json"];
 
 ```javascript artifact_names
 export const artifactNames = [

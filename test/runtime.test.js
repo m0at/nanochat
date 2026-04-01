@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { bootstrapTree, compileSource, parseProgram } from "../bootstrap/runtime.js";
+import { bootstrapTree, compileSource, main, parseProgram } from "../bootstrap/runtime.js";
 
 test("parseProgram accepts line and block segments", () => {
   const program = parseProgram(
@@ -72,4 +72,17 @@ test("bootstrapTree compiles the repository jizz source tree", async () => {
   assert.ok(sources.includes("rizz/cli.jizz"));
   assert.ok(sources.includes("examples/hello.jizz"));
   assert.match(await fs.readFile(path.join(tmpDir, "bootstrap-plan.json"), "utf8"), /"mode": "bootstrap"/);
+});
+
+test("cli help text is sourced from rizz/cli.jizz", async () => {
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (value) => lines.push(String(value));
+  try {
+    await main(["help"]);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.match(lines.join("\n"), /Computer Unified Memory dispatcher/);
+  assert.match(lines.join("\n"), /bootstrap \[--out DIR\] \[--json\]/);
 });

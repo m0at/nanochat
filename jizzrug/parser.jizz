@@ -9,6 +9,11 @@ export const grammar = {
     fenceOpen: "```<lane> [label]",
     fenceClose: "```",
 };
+export const parserContract = {
+    ignoresBlankLines: true,
+    ignoresComments: true,
+    supportsBlocks: true,
+};
 ```
 
 ```rust validation

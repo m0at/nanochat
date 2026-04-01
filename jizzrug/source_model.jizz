@@ -2,6 +2,7 @@
 
 js: export const CANONICAL_EXTENSION = ".jizz";
 js: export const ACCEPTED_EXTENSIONS = [".jizz", ".jizzrug", ".jr"];
+js: export const LANGUAGE_ALIASES = { js: "javascript", javascript: "javascript", node: "javascript", go: "go", golang: "go", rust: "rust", rs: "rust", zig: "zig" };
 
 ```rust segment
 pub struct Segment {
@@ -34,4 +35,8 @@ pub const LaneSet = [_][]const u8{
     "rust",
     "zig",
 };
+```
+
+```javascript runtime_spec
+export const supportedLanes = ["javascript", "go", "rust", "zig"];
 ```

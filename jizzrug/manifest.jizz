@@ -1,6 +1,7 @@
 # Manifest model emitted by the Computer Unified Memory dispatcher.
 
 js: export const MANIFEST_VERSION = "0.1.0";
+js: export const MANIFEST_FILE_NAME = "plan.json";
 
 ```go output
 package manifest

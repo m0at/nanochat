@@ -9,6 +9,16 @@ export const extensionMap = {
     rust: "rs",
     zig: "zig",
 };
+export const commentPrefix = {
+    javascript: "//",
+    go: "//",
+    rust: "//",
+    zig: "//",
+};
+export const emissionPolicy = {
+    writeOnlyPresentLanes: true,
+    preserveSegmentOrder: true,
+};
 ```
 
 ```rust output_naming

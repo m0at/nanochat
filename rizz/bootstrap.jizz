@@ -1,6 +1,8 @@
 # Bootstrap plan for a self-hosting jizzrug compiler.
 
 js: export const BOOTSTRAP_TARGET = "self-hosting-front-end";
+js: export const SOURCE_ROOTS = ["jizzrug", "rizz", "squirt", "examples"];
+js: export const DEFAULT_BOOTSTRAP_OUT_DIR = "out/bootstrap";
 
 ```javascript phases
 export const phases = [
