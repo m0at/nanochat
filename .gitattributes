@@ -1,3 +1,3 @@
-*.jizz linguist-language=Rust
-*.jizzrug linguist-language=Rust
-*.jr linguist-language=Rust
+*.jizz linguist-language=OCaml
+*.jizzrug linguist-language=OCaml
+*.jr linguist-language=OCaml
