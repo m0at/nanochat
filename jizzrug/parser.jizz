@@ -14,6 +14,78 @@ export const parserContract = {
     ignoresComments: true,
     supportsBlocks: true,
 };
+
+export function parseProgram(source, sourceModel, ParseErrorCtor = Error) {
+    const lines = source.split(/\r?\n/);
+    const segments = [];
+    let index = 0;
+    let nextId = 1;
+
+    function canonicalLane(rawLane) {
+        const canonical = sourceModel.LANGUAGE_ALIASES?.[rawLane.trim().toLowerCase()];
+        if (!canonical) {
+            throw new ParseErrorCtor(`Unsupported lane '${rawLane}'.`);
+        }
+        return canonical;
+    }
+
+    while (index < lines.length) {
+        const rawLine = lines[index];
+        const stripped = rawLine.trim();
+
+        if (!stripped || stripped.startsWith("#")) {
+            index += 1;
+            continue;
+        }
+
+        const fenceMatch = stripped.match(/^```([A-Za-z0-9_+-]+)(?:\s+(.*))?$/);
+        if (fenceMatch) {
+            const lane = canonicalLane(fenceMatch[1]);
+            const label = fenceMatch[2] ? fenceMatch[2].trim() : null;
+            const blockStart = index + 1;
+            index += 1;
+            const blockLines = [];
+            while (index < lines.length && lines[index].trim() !== "```") {
+                blockLines.push(lines[index]);
+                index += 1;
+            }
+            if (index >= lines.length) {
+                throw new ParseErrorCtor(`Unterminated fenced block starting on line ${blockStart}.`);
+            }
+            segments.push({
+                id: nextId,
+                language: lane,
+                kind: "block",
+                label,
+                lineStart: blockStart,
+                source: blockLines.join("\n").replace(/\s+$/, ""),
+            });
+            nextId += 1;
+            index += 1;
+            continue;
+        }
+
+        const colonIndex = rawLine.indexOf(":");
+        if (colonIndex !== -1) {
+            const lane = canonicalLane(rawLine.slice(0, colonIndex));
+            segments.push({
+                id: nextId,
+                language: lane,
+                kind: "line",
+                label: null,
+                lineStart: index + 1,
+                source: rawLine.slice(colonIndex + 1).trimStart(),
+            });
+            nextId += 1;
+            index += 1;
+            continue;
+        }
+
+        throw new ParseErrorCtor(`Could not parse line ${index + 1}: '${rawLine}'.`);
+    }
+
+    return { segments };
+}
 ```
 
 ```rust validation
