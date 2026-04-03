@@ -4,7 +4,7 @@
 
 The point is not novelty for its own sake. The point is to make polyglot boundaries explicit, reviewable, and compiler-owned instead of scattering them across wrappers, handwritten FFI, and build glue.
 
-This repository is written in `jizzrug`. The source of truth for the language front end, the manifest model, lane aliases, CLI contract, bootstrap roots, and output policy lives in `.jizz` files. A small Node-based bootstrap runtime is included so the `.jizz` source tree can actually be executed today.
+This repository is written in `jizzrug`. The source of truth for the language front end, the manifest model, lane aliases, CLI contract, bootstrap roots, and output policy lives in `.jizz` files. A Node-based bootstrap runtime executes the `.jizz` source tree and emits per-lane outputs.
 
 This started as a fork of Karpathy's `nanochat`, and honestly forking that repo was inspiring enough that it short-circuited my brain and made me go write an entirely different programming language. The result is not a patch set. It is a full departure motivated by how energizing it was to start from a codebase that felt small, legible, and alive.
 
@@ -14,7 +14,7 @@ License: `AGPL-3.0-only`.
 
 - A language for expressing one program as explicit language-native segments.
 - A compiler architecture centered on the `Computer Unified Memory dispatcher`, exposed as `rizz cum`.
-- A self-hosting source tree for the parser, manifest model, transpiler, bootstrap plan, and CLI surface.
+- A self-hosting source tree for the parser, manifest model, transpiler, type system, module system, optimizer, code generator, bootstrap plan, and CLI surface.
 
 ## Why It Could Matter
 
@@ -25,28 +25,59 @@ License: `AGPL-3.0-only`.
 
 ## Repository Layout
 
-- [jizzrug/source_model.jizz](/Users/andy/nanochat/jizzrug/source_model.jizz): canonical segment and lane model
-- [jizzrug/parser.jizz](/Users/andy/nanochat/jizzrug/parser.jizz): parsing rules and parser-stage contracts
-- [jizzrug/manifest.jizz](/Users/andy/nanochat/jizzrug/manifest.jizz): emitted plan model
-- [jizzrug/transpiler.jizz](/Users/andy/nanochat/jizzrug/transpiler.jizz): lane emission policy
-- [rizz/cli.jizz](/Users/andy/nanochat/rizz/cli.jizz): CLI source written in jizzrug
-- [rizz/bootstrap.jizz](/Users/andy/nanochat/rizz/bootstrap.jizz): self-hosting bootstrap plan
-- [squirt/flush.jizz](/Users/andy/nanochat/squirt/flush.jizz): output flush layer for emitted files and manifests
-- [squirt/stream.jizz](/Users/andy/nanochat/squirt/stream.jizz): artifact stream contracts for emitted lanes
-- [examples/hello.jizz](/Users/andy/nanochat/examples/hello.jizz): canonical example program
-- [bootstrap/runtime.js](/Users/andy/nanochat/bootstrap/runtime.js): host runtime that executes the `.jizz` source tree
-- [bin/rizz.js](/Users/andy/nanochat/bin/rizz.js): executable CLI entrypoint
-- [package.json](/Users/andy/nanochat/package.json): bootstrap package manifest
+### Language specification (`jizzrug/`)
+
+- [jizzrug/source_model.jizz](jizzrug/source_model.jizz): canonical segment and lane model
+- [jizzrug/parser.jizz](jizzrug/parser.jizz): parsing rules, directives, error recovery, multi-lane syntax
+- [jizzrug/manifest.jizz](jizzrug/manifest.jizz): emitted plan model
+- [jizzrug/transpiler.jizz](jizzrug/transpiler.jizz): lane emission policy, optimization flags, codegen config
+- [jizzrug/types.jizz](jizzrug/types.jizz): type system contracts and cross-lane validation model
+- [jizzrug/modules.jizz](jizzrug/modules.jizz): module system, import resolution, dependency graph model
+
+### CLI surface (`rizz/`)
+
+- [rizz/cli.jizz](rizz/cli.jizz): CLI command surface and help text
+- [rizz/bootstrap.jizz](rizz/bootstrap.jizz): self-hosting bootstrap plan
+
+### Output subsystem (`squirt/`)
+
+- [squirt/flush.jizz](squirt/flush.jizz): output flush layer for emitted files and manifests
+- [squirt/stream.jizz](squirt/stream.jizz): artifact stream contracts for emitted lanes
+
+### Standard library (`stdlib/`)
+
+- [stdlib/io.jizz](stdlib/io.jizz): cross-lane I/O contracts (print, read, file ops)
+- [stdlib/fmt.jizz](stdlib/fmt.jizz): cross-lane string formatting (pad, case, join, template)
+- [stdlib/math.jizz](stdlib/math.jizz): cross-lane math operations (trig, rounding, clamp, lerp)
+- [stdlib/collections.jizz](stdlib/collections.jizz): cross-lane collection types (Stack, Queue, OrderedMap)
+
+Each stdlib module has real implementations in all four lanes (JavaScript, Go, Rust, Zig).
+
+### Bootstrap runtime (`bootstrap/`)
+
+- [bootstrap/runtime.js](bootstrap/runtime.js): host runtime, command routing, compilation pipeline
+- [bootstrap/parser.js](bootstrap/parser.js): standalone parser with directives, multi-lane, error recovery
+- [bootstrap/typechecker.js](bootstrap/typechecker.js): post-parse validation (labels, refs, lanes, reachability, @type contracts)
+- [bootstrap/modules.js](bootstrap/modules.js): module resolution, dependency graph, circular import detection
+- [bootstrap/optimizer.js](bootstrap/optimizer.js): AST optimization passes (dead elimination, lane consolidation, comment stripping)
+- [bootstrap/codegen.js](bootstrap/codegen.js): FFI stub generation, Makefile generation, interop type declarations
+- [bootstrap/cache.js](bootstrap/cache.js): SHA256 content-hash compilation cache
+- [bootstrap/watcher.js](bootstrap/watcher.js): fs.watch file watcher for incremental recompilation
+- [bootstrap/repl.js](bootstrap/repl.js): interactive REPL with JS lane evaluation
+- [bootstrap/fmt.js](bootstrap/fmt.js): source formatter (normalize spacing, collapse blanks, sort imports)
+
+### Other
+
+- [bin/rizz.js](bin/rizz.js): executable CLI entrypoint
+- [examples/hello.jizz](examples/hello.jizz): canonical example program
+- [package.json](package.json): bootstrap package manifest
+- [test/](test/): 102 tests across parser, typechecker, modules, optimizer, codegen, tooling, runtime
 
 ## Install
 
 Requirements:
 
 - Node.js 22+
-
-Compatibility note:
-
-- The bootstrap runtime is expected to be portable to OpenBSD in principle, but this has not been verified yet.
 
 Install and expose the CLI locally:
 
@@ -62,48 +93,57 @@ node bin/rizz.js help
 
 ## CLI
 
-The command surface is defined by [rizz/cli.jizz](/Users/andy/nanochat/rizz/cli.jizz).
+The command surface is defined by [rizz/cli.jizz](rizz/cli.jizz).
 
-Canonical invocation:
+```
+usage: rizz <command> [options]
 
-```bash
-rizz cum <source.jizz> [--out DIR] [--json]
-rizz bootstrap [--out DIR] [--json]
+commands:
+  cum <source> [--out DIR] [--json]     Run the Computer Unified Memory dispatcher
+  bootstrap [--out DIR] [--json]        Compile the repo .jizz source tree
+  watch [--out DIR]                     Watch sources and recompile on change
+  repl                                  Interactive jizzrug REPL
+  check <source>                        Parse and validate without emitting
+  fmt <source>                          Format jizzrug source files
+  help                                  Show this help text
+
+flags:
+  --verbose                             Detailed compilation output
+  --dry-run                             Parse and validate but do not write
+  --check                               Run typechecker before compilation (with cum)
+  --json                                Output manifest as JSON
+  --out DIR                             Set output directory
 ```
 
 `cum` stands for `Computer Unified Memory dispatcher`.
 
-Accepted source extensions:
+Accepted source extensions: `.jizz`, `.jizzrug`, `.jr`
 
-- `.jizz`
-- `.jizzrug`
-- `.jr`
-
-Canonical examples:
+### Examples
 
 ```bash
 rizz cum examples/hello.jizz --out dist/hello
 rizz cum rizz/cli.jizz --out dist/cli --json
+rizz cum examples/hello.jizz --check --verbose
 rizz bootstrap --out out/selfhost --json
+rizz check examples/hello.jizz
+rizz fmt examples/hello.jizz --dry-run
+rizz watch --out dist/watch --verbose
+rizz repl
 ```
 
-The bootstrap runtime emits:
+The bootstrap runtime emits per-lane output files and a plan manifest:
 
-- `main.js`
-- `main.go`
-- `main.rs`
-- `main.zig`
+- `main.js`, `main.go`, `main.rs`, `main.zig` (only lanes present in the input)
 - `plan.json`
-
-Only lanes present in the input program should be emitted.
 
 The final write step is handled by the `squirt` subsystem, which owns output flushing and manifest delivery.
 
-`rizz bootstrap` walks the `jizzrug`, `rizz`, `squirt`, and `examples` trees, compiles every `.jizz` source unit, and writes a root `bootstrap-plan.json`.
+`rizz bootstrap` walks the `jizzrug`, `rizz`, `squirt`, `stdlib`, and `examples` trees, compiles every `.jizz` source unit, and writes a root `bootstrap-plan.json`.
 
 ## Syntax
 
-Single-line segments:
+### Single-line segments
 
 ```text
 js: console.log("back in JavaScript");
@@ -111,7 +151,13 @@ go: fmt.Println("hello from Go")
 zig: std.debug.print("hello from Zig\n", .{});
 ```
 
-Fenced blocks:
+### Multi-lane inline segments
+
+```text
+js,go: // shared concept across lanes
+```
+
+### Fenced blocks
 
 ````text
 ```rust greet
@@ -121,29 +167,97 @@ fn greet(name: &str) -> String {
 ```
 ````
 
-Supported lane tags:
+### Multi-lane fenced blocks
 
-- `js` / `javascript`
+````text
+```js,rust shared_label
+// emitted as separate segments for each lane
+```
+````
+
+### Supported lane tags
+
+- `js` / `javascript` / `node`
 - `go` / `golang`
 - `rust` / `rs`
 - `zig`
 
+### Directives
+
+```text
+@import "stdlib/io.jizz"
+@import "./other_module.jizz"
+@meta author andy
+@meta version 0.1.0
+@ref greet
+@type greet: string -> string
+```
+
+- `@import` declares a module dependency (relative paths or `stdlib/` prefix)
+- `@meta` attaches file-level key-value metadata
+- `@ref` declares a reference to a labeled segment (validated by typechecker)
+- `@type` declares a cross-lane type contract (validated by typechecker)
+
+## Pipeline
+
+The compilation pipeline runs in this order:
+
+1. **Parse** -- `.jizz` source to AST (segments, imports, meta, refs)
+2. **Typecheck** -- validate lanes, labels, refs, reachability, type contracts (optional, `--check`)
+3. **Optimize** -- dead segment elimination, lane consolidation, empty removal, comment stripping (optional, `--optimize`)
+4. **Dispatch and emit** -- group segments by lane, render per-lane output via transpiler
+5. **Flush** -- write output files and plan manifest via squirt subsystem
+
+## Module System
+
+Files can import other `.jizz` modules:
+
+```text
+@import "stdlib/io.jizz"
+@import "./helpers.jizz"
+```
+
+The module resolver handles:
+- Relative path resolution from the importing file
+- `stdlib/` prefix resolution from the repo root
+- Automatic `.jizz` extension appending
+- Circular import detection with cycle path reporting
+- Dependency graph construction and topological ordering
+
+## Type System
+
+The typechecker validates cross-lane contracts:
+
+- All lane tags must be one of the four supported lanes
+- Segment labels must be unique within a file
+- `@ref` targets must resolve to existing labeled segments
+- Adjacent same-lane segments after a terminating statement are flagged as unreachable
+- `@type` contracts declare cross-lane function signatures (`@type name: param -> param -> return`)
+- Duplicate type contracts are rejected
+
 ## Status
 
-This repo is now the jizzrug source tree with a working bootstrap runtime.
+This repo is the jizzrug source tree with a working bootstrap runtime, standard library, type system, module system, optimizer, code generator, and developer tooling.
 
 Today it provides:
 
-- the language-facing source files for the front-end architecture
-- a serious CLI contract in jizzrug
-- real runtime configuration loaded from the `.jizz` source files
-- a canonical example program in `.jizz`
-- a Node host runtime that can execute the `.jizz` source tree today
-- a bootstrap plan for getting to a self-hosting compiler
+- the language-facing source files for the full front-end architecture
+- a parser with directives, multi-lane syntax, column tracking, and error recovery
+- a post-parse typechecker with cross-lane contract validation
+- a module system with import resolution, dependency graphs, and circular import detection
+- a standard library with real implementations across all four lanes
+- an optimizer with dead elimination, lane consolidation, and comment stripping
+- a code generator with FFI stubs, Makefiles, and interop type declarations
+- a SHA256 build cache for incremental compilation
+- a file watcher for live recompilation
+- an interactive REPL with JS lane evaluation
+- a source formatter
+- a CLI with 6 commands and 5 flags
+- 102 tests across all subsystems
 
 What it does not provide yet:
 
-- cross-language type-checking or symbol resolution
+- cross-language type-checking or symbol resolution at the semantic level
 - generated FFI or executable multi-language linking
 - a true self-hosting compiler implementation
 
